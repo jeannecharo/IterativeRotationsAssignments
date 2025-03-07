@@ -1,0 +1,13 @@
+
+# export OMP_NUM_THREADS=1  # restrict to one thread
+
+bash compile.sh && time ./compare_catalog.x ../examples/IRA/example_inputs/diphenylalanine.xyz out &&
+{
+# python3 -m venv venv; . venv/bin/activate; pip install --upgrade pip; pip install gprof2dot
+# enable -g and -pg in Makefile
+if [ -d venv ]; then
+    . venv/bin/activate
+    gprof compare_catalog.x gmon.out | gprof2dot | dot -Tpng -o output.png
+    display output.png &
+fi
+}

@@ -22,6 +22,7 @@ LIBLAPACK?= -llapack
 FFLAGS =  -fcheck=bounds -ffree-line-length-512 -fPIC -cpp -Ofast -march=native -ffast-math -funroll-loops
 #FFLAGS = -fcheck=bounds -ffree-line-length-512 -fPIC -cpp -O0
 #FFLAGS += -g -DDEBUG -pedantic -std=f2008
+#FFLAGS += -pg
 
 # absolute path of this Makefile
 SRC := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))

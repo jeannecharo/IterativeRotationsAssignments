@@ -2,6 +2,7 @@ program compare_catalog
     
     use ira_precision
     use ira_pbc, only: pbc_vec
+    use OMP_LIB
     
   IMPLICIT NONE
   integer                   :: nref_catalog   ! size of the catalog
@@ -14,17 +15,19 @@ program compare_catalog
   LOGICAL                   :: fail
   CHARACTER(len=60)         :: file_catalog, file_analyze, file_out
   TYPE struct
-  INTEGER, ALLOCATABLE  :: typ(:)
-  REAL,  ALLOCATABLE    :: coords(:,:)
-  REAL, DIMENSION(3,3)  :: lat
-  REAL, DIMENSION(3,3)  :: beta 
-  INTEGER               :: nat
-  REAL                  :: dist_k
+    INTEGER, ALLOCATABLE  :: typ(:)
+    REAL,  ALLOCATABLE    :: coords(:,:)
+    REAL, DIMENSION(3,3)  :: lat
+    REAL, DIMENSION(3,3)  :: beta
+    INTEGER               :: nat
+    REAL                  :: dist_k
   ENDTYPE struct 
   TYPE(struct), ALLOCATABLE :: catalog (:)    ! Catalog of structure
   TYPE(struct), ALLOCATABLE :: analyze (:)    ! Structures to analyze
   TYPE(struct)              :: loc        ! local structure of global structure to analyze  
   
+  INTEGER :: nthreads, ithread, testcount
+
   CALL getarg(1, file_analyze)
   CALL getarg(2, file_out)
  
@@ -112,13 +115,35 @@ program compare_catalog
   OPEN(12,FILE=TRIM(file_out))
   WRITE(12,*) 'Number of frames: ', nstruc_analyze
   WRITE(12,*) 'Number of refs:   ', nref_catalog
+
+  ! Obtenir le nombre de threads
+  nthreads = 1
+  !$ nthreads = OMP_GET_MAX_THREADS()
+
+  PRINT*, "THREADS=", nthreads
+
+  PRINT*,"loop1=",nstruc_analyze
   DO istruc = 1, nstruc_analyze
-   ALLOCATE( list(1:analyze(istruc)%nat) )
    PRINT*, istruc
    WRITE(12,'(a8,i10)') 'Frame=', istruc
    WRITE(12,'(a8,a5,a5,a10,a11)') 'Atom', 'Type', 'Ref', 'Distance', 'Neighbours'
+   PRINT*, "loop2=", analyze(istruc)%nat
+
+   !$OMP PARALLEL PRIVATE(iat, iref, dist, dist_lowest, idx, loc, ithread, testcount, list, n_list)
+
+   ALLOCATE( list(1:analyze(istruc)%nat) )
+
+   ithread = OMP_GET_THREAD_NUM() + 1  ! +1 (tableau commencent à 1)
+   dist_lowest = HUGE(dist_lowest)
+   idx = 0
+   testcount = 0
+
+   PRINT*,"th",ithread,"/",nthreads
+
+   !$OMP DO SCHEDULE(DYNAMIC,1)
    DO iat = 1, analyze(istruc)%nat
     dist_lowest= 999.0
+    testcount = testcount + 1
     !
     !print*, iat
     ! ... Gget local structure around atom iat
@@ -144,6 +169,7 @@ program compare_catalog
      DEALLOCATE( loc%typ, loc%coords )
      
       IF (dist_lowest <= 5) THEN
+       !$OMP CRITICAL
        WRITE(12,'(i8,i5,i5,f10.7)',ADVANCE='NO') iat, analyze(istruc)%typ(iat), idx, dist_lowest
        DO jat = 2, n_list
         IF (analyze(istruc)%typ(list(jat)) /= 999 .AND. (list(jat)+42)/43 /= (list(jat-1)+42)/43) THEN
@@ -151,10 +177,20 @@ program compare_catalog
         ENDIF
        ENDDO
        WRITE(12,'(a)')
+       !$OMP END CRITICAL
       ENDIF
     ENDIF 
    ENDDO
+   !$OMP END DO
+
+   print*,"thread",ithread,"/",nthreads,": count=", testcount
+
    DEALLOCATE( list )
+
+
+   !$OMP END PARALLEL
+
+
   ENDDO
   WRITE(12,*) "Fin du fichier"
   CLOSE(12)
@@ -216,8 +252,8 @@ end subroutine set_atoms_dist
 
 subroutine get_atoms( nat, typ, coords, lat, isite, n_list, array, nat_loc, typ_loc, coords_loc )
   !! get atoms from list into *_loc arrays
-  !! Attention: nat_loc is computed before entering in this routine, and
-  !! the arrays typ_loc and coords_loc are not allocated here!
+  !! Attention: nat_loc is computed before entering in this routine <---- ??????
+  !! and the arrays typ_loc and coords_loc are not allocated here!
   !!
   !! input array is integer list of indices to be included
   use ira_precision
